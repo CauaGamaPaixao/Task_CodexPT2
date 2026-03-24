@@ -1,6 +1,7 @@
 import streamlit as st
 import json
 import os
+import base64
 
 # --- 1. CONFIGURATION AND STYLE ---
 st.set_page_config(page_title="TaskMaster Kanban", layout="wide", page_icon="📋")
@@ -42,6 +43,22 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def apply_board_background(image_bytes):
+    encoded_image = base64.b64encode(image_bytes).decode()
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/png;base64,{encoded_image}");
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 # --- 2. DATA PERSISTENCE ---
 def load_tasks():
     if os.path.exists('kanban_data.json'):
@@ -55,9 +72,32 @@ def save_tasks(tasks):
 
 if 'tasks' not in st.session_state:
     st.session_state.tasks = load_tasks()
+if 'board_background' not in st.session_state:
+    st.session_state.board_background = None
 
 # --- 3. INTERFACE: ADD TASK ---
-st.title("📋 TaskMaster: Your Kanban Board")
+title_col, modifiers_col = st.columns([4, 1])
+
+with title_col:
+    st.title("📋 TaskMaster: Your Kanban Board")
+
+with modifiers_col:
+    with st.expander("🎨 GUI Modifiers"):
+        background_file = st.file_uploader(
+            "Board background",
+            type=["png", "jpg", "jpeg", "webp"],
+            help="Upload an image from your computer to use as board background."
+        )
+
+        if background_file is not None:
+            st.session_state.board_background = background_file.getvalue()
+
+        if st.button("Remove background"):
+            st.session_state.board_background = None
+            st.rerun()
+
+if st.session_state.board_background:
+    apply_board_background(st.session_state.board_background)
 
 with st.sidebar:
     st.header("➕ New Task")
