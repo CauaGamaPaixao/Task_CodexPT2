@@ -2,6 +2,7 @@ import streamlit as st
 import json
 import os
 import base64
+from urllib import request, error, parse
 
 # --- 1. CONFIGURATION AND STYLE ---
 st.set_page_config(page_title="TaskMaster Kanban", layout="wide", page_icon="📋")
@@ -70,6 +71,35 @@ def save_tasks(tasks):
     with open('kanban_data.json', 'w') as f:
         json.dump(tasks, f, indent=4)
 
+def post_json(url, payload, timeout=5):
+    data = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    with request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+def get_json(url, timeout=5):
+    with request.urlopen(url, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+def notify_task_event(event_name, task):
+    integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
+    try:
+        post_json(
+            f"{integration_base_url}/integrations/events/task",
+            {
+                "event": event_name,
+                "taskTitle": task["title"],
+                "status": task["status"]
+            }
+        )
+    except Exception:
+        pass
+
 if 'tasks' not in st.session_state:
     st.session_state.tasks = load_tasks()
 if 'board_background' not in st.session_state:
@@ -104,6 +134,7 @@ with st.sidebar:
     with st.form("task_form", clear_on_submit=True):
         title = st.text_input("What needs to be done?")
         priority = st.selectbox("Priority", ["High", "Medium", "Low"])
+        github_pr_url = st.text_input("GitHub PR URL (optional)")
         submit = st.form_submit_button("Add to board")
         
         if submit and title:
@@ -111,10 +142,13 @@ with st.sidebar:
                 "id": len(st.session_state.tasks), 
                 "title": title, 
                 "priority": priority, 
-                "status": "Pending"
+                "status": "Pending",
+                "github_pr_url": github_pr_url.strip(),
+                "subtasks": []
             }
             st.session_state.tasks.append(new_task)
             save_tasks(st.session_state.tasks)
+            notify_task_event("task_created", new_task)
             st.rerun()
 
 # --- 4. THE BOARD ---
@@ -135,6 +169,8 @@ for col_name, status_id, column, btn_text, css_class in workflow:
         
         for task in current_tasks:
             priority_class = f"priority-{task['priority'].lower()}"
+            github_pr_url = task.get("github_pr_url", "")
+            task_subtasks = task.get("subtasks", [])
             
             st.markdown(f"""
                 <div class="task-card {priority_class}">
@@ -142,14 +178,49 @@ for col_name, status_id, column, btn_text, css_class in workflow:
                     <small>Priority: {task['priority']}</small>
                 </div>
             """, unsafe_allow_html=True)
+
+            if github_pr_url:
+                st.markdown(f"🔗 [GitHub PR]({github_pr_url})")
+                if st.button("Check PR details", key=f"pr_{task['id']}"):
+                    integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
+                    try:
+                        query = parse.urlencode({"url": github_pr_url})
+                        pr_data = get_json(f"{integration_base_url}/integrations/github/pr?{query}")
+                        st.caption(
+                            f"PR #{pr_data['number']} | {pr_data['state']} | Author: {pr_data.get('author', 'unknown')}"
+                        )
+                    except Exception as fetch_error:
+                        st.warning(f"Could not fetch PR details: {fetch_error}")
+
+            if task_subtasks:
+                st.markdown("**Subtasks:**")
+                for subtask in task_subtasks:
+                    st.markdown(f"- {subtask}")
+
+            if st.button("Gerar subtasks", key=f"subtasks_{task['id']}"):
+                integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
+                try:
+                    generated_subtasks = post_json(
+                        f"{integration_base_url}/ai/generate-subtasks",
+                        {"taskTitle": task["title"]}
+                    )
+                    task["subtasks"] = generated_subtasks
+                    save_tasks(st.session_state.tasks)
+                    notify_task_event("subtasks_generated", task)
+                    st.rerun()
+                except Exception as generation_error:
+                    st.warning(f"Could not generate subtasks: {generation_error}")
             
             if st.button(btn_text, key=f"btn_{task['id']}"):
                 # STATE FLOW:
                 if status_id == "Pending":
                     task['status'] = "In Progress"
+                    notify_task_event("task_moved", task)
                 elif status_id == "In Progress":
                     task['status'] = "Finished"
+                    notify_task_event("task_completed", task)
                 elif status_id == "Finished":
+                    notify_task_event("task_deleted", task)
                     st.session_state.tasks.remove(task) # Permanent deletion
                 
                 save_tasks(st.session_state.tasks)
