@@ -6,5 +6,6 @@ const router = express.Router();
 router.get('/github/pr', integrationController.getPullRequest);
 router.post('/events/task', integrationController.notifyTaskEvent);
 router.get('/activities', integrationController.listActivities);
+router.get('/users', integrationController.listUsers);
 
 module.exports = router;

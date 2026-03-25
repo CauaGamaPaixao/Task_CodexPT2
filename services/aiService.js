@@ -1,38 +1,32 @@
-function buildLocalSubtasks(taskTitle) {
+function generateMockSubtasks(taskTitle) {
+  const normalizedTitle = String(taskTitle || '').toLowerCase();
+
+  if (normalizedTitle.includes('login')) {
+    return [
+      'Criar endpoint de autenticação',
+      'Validar credenciais',
+      'Gerar token JWT',
+      'Criar middleware de autorização',
+    ];
+  }
+
   return [
-    `Definir escopo de: ${taskTitle}`,
-    `Implementar etapa principal de: ${taskTitle}`,
-    `Validar e revisar: ${taskTitle}`,
+    'Analisar requisito',
+    'Implementar funcionalidade',
+    'Testar solução',
+    'Documentar',
   ];
 }
 
 async function generateSubtasks(taskTitle) {
-  const endpoint = process.env.AI_SUBTASKS_API_URL;
+  console.log('AI subtasks generated');
 
-  if (!endpoint) {
-    return buildLocalSubtasks(taskTitle);
+  try {
+    return generateMockSubtasks(taskTitle);
+  } catch (error) {
+    console.error('AI service error:', error.message);
+    throw error;
   }
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ taskTitle }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Falha na API de IA externa (${response.status}): ${body}`);
-  }
-
-  const payload = await response.json();
-  if (Array.isArray(payload)) {
-    return payload;
-  }
-  if (Array.isArray(payload.subtasks)) {
-    return payload.subtasks;
-  }
-
-  return buildLocalSubtasks(taskTitle);
 }
 
 module.exports = {

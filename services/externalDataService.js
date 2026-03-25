@@ -11,21 +11,27 @@ async function readLogs() {
     if (error.code === 'ENOENT') {
       return [];
     }
+
+    console.error('External data service read error:', error.message);
     throw error;
   }
 }
 
 async function logActivity(activity) {
-  const logs = await readLogs();
-  const entry = {
-    id: logs.length + 1,
-    timestamp: new Date().toISOString(),
-    ...activity,
-  };
+  try {
+    const logs = await readLogs();
+    const entry = {
+      id: logs.length + 1,
+      ...activity,
+    };
 
-  logs.push(entry);
-  await fs.writeFile(LOG_FILE, JSON.stringify(logs, null, 2));
-  return entry;
+    logs.push(entry);
+    await fs.writeFile(LOG_FILE, JSON.stringify(logs, null, 2));
+    return entry;
+  } catch (error) {
+    console.error('External data service write error:', error.message);
+    throw error;
+  }
 }
 
 module.exports = {

@@ -2,7 +2,7 @@ import streamlit as st
 import json
 import os
 import base64
-from urllib import request, error, parse
+from urllib import request, parse
 
 # --- 1. CONFIGURATION AND STYLE ---
 st.set_page_config(page_title="TaskMaster Kanban", layout="wide", page_icon="📋")
@@ -87,14 +87,14 @@ def get_json(url, timeout=5):
         return json.loads(response.read().decode("utf-8"))
 
 def notify_task_event(event_name, task):
-    integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
     try:
         post_json(
             f"{integration_base_url}/integrations/events/task",
             {
                 "event": event_name,
                 "taskTitle": task["title"],
-                "status": task["status"]
+                "status": task["status"],
+                "assignee": task.get("assignee")
             }
         )
     except Exception:
@@ -104,6 +104,15 @@ if 'tasks' not in st.session_state:
     st.session_state.tasks = load_tasks()
 if 'board_background' not in st.session_state:
     st.session_state.board_background = None
+if 'users' not in st.session_state:
+    st.session_state.users = []
+
+integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
+if not st.session_state.users:
+    try:
+        st.session_state.users = get_json(f"{integration_base_url}/integrations/users")
+    except Exception:
+        st.session_state.users = []
 
 # --- 3. INTERFACE: ADD TASK ---
 title_col, modifiers_col = st.columns([4, 1])
@@ -135,6 +144,8 @@ with st.sidebar:
         title = st.text_input("What needs to be done?")
         priority = st.selectbox("Priority", ["High", "Medium", "Low"])
         github_pr_url = st.text_input("GitHub PR URL (optional)")
+        user_options = ["Unassigned"] + [u["name"] for u in st.session_state.users]
+        selected_user = st.selectbox("Assignee (optional)", user_options)
         submit = st.form_submit_button("Add to board")
         
         if submit and title:
@@ -144,6 +155,7 @@ with st.sidebar:
                 "priority": priority, 
                 "status": "Pending",
                 "github_pr_url": github_pr_url.strip(),
+                "assignee": None if selected_user == "Unassigned" else selected_user,
                 "subtasks": []
             }
             st.session_state.tasks.append(new_task)
@@ -178,11 +190,12 @@ for col_name, status_id, column, btn_text, css_class in workflow:
                     <small>Priority: {task['priority']}</small>
                 </div>
             """, unsafe_allow_html=True)
+            if task.get("assignee"):
+                st.caption(f"👤 Assignee: {task['assignee']}")
 
             if github_pr_url:
                 st.markdown(f"🔗 [GitHub PR]({github_pr_url})")
                 if st.button("Check PR details", key=f"pr_{task['id']}"):
-                    integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
                     try:
                         query = parse.urlencode({"url": github_pr_url})
                         pr_data = get_json(f"{integration_base_url}/integrations/github/pr?{query}")
@@ -198,7 +211,6 @@ for col_name, status_id, column, btn_text, css_class in workflow:
                     st.markdown(f"- {subtask}")
 
             if st.button("Gerar subtasks", key=f"subtasks_{task['id']}"):
-                integration_base_url = os.getenv("MCP_API_URL", "http://localhost:3001")
                 try:
                     generated_subtasks = post_json(
                         f"{integration_base_url}/ai/generate-subtasks",
