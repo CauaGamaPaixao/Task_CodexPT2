@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import json
 import os
 
@@ -114,3 +115,24 @@ for col_name, status_id, column, btn_text, css_class in workflow:
                 
                 save_tasks(st.session_state.tasks)
                 st.rerun()
+
+# --- 5. NON-INTRUSIVE FRONTEND EXTENSIONS ---
+# Custom enhancements are loaded as isolated JS/CSS and applied via DOM observation.
+def _read_text_file(path):
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
+
+custom_styles = _read_text_file("customStyles.css")
+checklist_skill = _read_text_file("checklistSkill.js")
+custom_features = _read_text_file("customFeatures.js")
+
+components.html(
+    f"""
+    <style>{custom_styles}</style>
+    <script>{checklist_skill}</script>
+    <script>{custom_features}</script>
+    """,
+    height=0,
+)
