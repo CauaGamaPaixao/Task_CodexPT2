@@ -190,7 +190,14 @@ for col_name, status_id, column, btn_text, css_class in workflow:
             with links_col1:
                 st.link_button("Add to Calendar", calendar_url, use_container_width=True)
             with links_col2:
-                teams_summary = f"New Task: {task['title']} | Priority: {task['priority']}"
+                priority_map = {"High": "Alta", "Medium": "Média", "Low": "Baixa"}
+                priority_label = priority_map.get(task["priority"], task["priority"])
+                teams_summary = (
+                    "🚀 Nova Task\\n"
+                    f"📌 Nome: {task['title']}\\n"
+                    f"⚡ Prioridade: {priority_label}\\n"
+                    f"📝 Descrição: {task.get('description', '') or '-'}"
+                )
                 teams_summary_safe = teams_summary.replace("'", "&#39;")
                 teams_js = f"""
                 <button style='width:100%;padding:0.45rem;border:1px solid #b9c2d8;border-radius:0.5rem;background:#f7f9ff;cursor:pointer;'
