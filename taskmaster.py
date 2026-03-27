@@ -1,7 +1,8 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import json
 import os
+import base64
+from urllib.parse import quote
 
 # --- 1. CONFIGURATION AND STYLE ---
 st.set_page_config(page_title="TaskMaster Kanban", layout="wide", page_icon="📋")
@@ -54,8 +55,30 @@ def save_tasks(tasks):
     with open('kanban_data.json', 'w') as f:
         json.dump(tasks, f, indent=4)
 
+def generate_checklist(description):
+    text = (description or "").lower()
+    if "api" in text:
+        return ["Create endpoint", "Validate inputs", "Implement authentication", "Test API"]
+    if "bug" in text or "fix" in text:
+        return ["Reproduce issue", "Identify root cause", "Apply fix", "Run regression checks"]
+    return ["Break work into subtasks", "Implement core changes", "Review and refine", "Run tests"]
+
+def ensure_task_schema(task):
+    task.setdefault("description", "")
+    task.setdefault("checklist", generate_checklist(task.get("description", "") or task.get("title", "")))
+    task.setdefault("checklist_state", [False for _ in task["checklist"]])
+
+def csv_escape(value):
+    return "\"" + str(value or "").replace("\"", "\"\"") + "\""
+
 if 'tasks' not in st.session_state:
     st.session_state.tasks = load_tasks()
+    for existing_task in st.session_state.tasks:
+        ensure_task_schema(existing_task)
+    save_tasks(st.session_state.tasks)
+
+if "custom_background_data" not in st.session_state:
+    st.session_state.custom_background_data = ""
 
 # --- 3. INTERFACE: ADD TASK ---
 st.title("📋 TaskMaster: Your Kanban Board")
@@ -64,19 +87,69 @@ with st.sidebar:
     st.header("➕ New Task")
     with st.form("task_form", clear_on_submit=True):
         title = st.text_input("What needs to be done?")
+        description = st.text_area("Description")
         priority = st.selectbox("Priority", ["High", "Medium", "Low"])
         submit = st.form_submit_button("Add to board")
         
         if submit and title:
+            auto_checklist = generate_checklist(description or title)
             new_task = {
                 "id": len(st.session_state.tasks), 
                 "title": title, 
+                "description": description,
                 "priority": priority, 
-                "status": "Pending"
+                "status": "Pending",
+                "checklist": auto_checklist,
+                "checklist_state": [False for _ in auto_checklist]
             }
             st.session_state.tasks.append(new_task)
             save_tasks(st.session_state.tasks)
             st.rerun()
+
+    st.markdown("---")
+    st.subheader("🎨 Board background")
+    bg_file = st.file_uploader("Customize Background", type=["png", "jpg", "jpeg", "webp"], key="bg_upload")
+    if bg_file is not None:
+        file_bytes = bg_file.getvalue()
+        mime_type = bg_file.type or "image/png"
+        base64_data = base64.b64encode(file_bytes).decode("utf-8")
+        st.session_state.custom_background_data = f"data:{mime_type};base64,{base64_data}"
+
+    if st.button("Reset Background"):
+        st.session_state.custom_background_data = ""
+
+    st.markdown("---")
+    st.subheader("📊 Backlog export")
+    csv_lines = ["Title,Description,Priority,Status"]
+    for t in st.session_state.tasks:
+        ensure_task_schema(t)
+        row = [
+            csv_escape(t.get("title", "")),
+            csv_escape(t.get("description", "")),
+            csv_escape(t.get("priority", "")),
+            csv_escape(t.get("status", ""))
+        ]
+        csv_lines.append(",".join(row))
+    st.download_button(
+        "Export Backlog",
+        data="\n".join(csv_lines),
+        file_name="taskmaster_backlog.csv",
+        mime="text/csv"
+    )
+
+if st.session_state.custom_background_data:
+    st.markdown(
+        f"""
+        <style>
+        [data-testid="stAppViewContainer"] {{
+            background-image: url('{st.session_state.custom_background_data}');
+            background-size: cover;
+            background-position: center;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 # --- 4. THE BOARD ---
 col1, col2, col3 = st.columns(3)
@@ -95,6 +168,7 @@ for col_name, status_id, column, btn_text, css_class in workflow:
         current_tasks = [t for t in st.session_state.tasks if t['status'] == status_id]
         
         for task in current_tasks:
+            ensure_task_schema(task)
             priority_class = f"priority-{task['priority'].lower()}"
             
             st.markdown(f"""
@@ -103,6 +177,36 @@ for col_name, status_id, column, btn_text, css_class in workflow:
                     <small>Priority: {task['priority']}</small>
                 </div>
             """, unsafe_allow_html=True)
+
+            if task.get("description"):
+                st.caption(f"Description: {task['description']}")
+
+            calendar_url = (
+                "https://calendar.google.com/calendar/render?action=TEMPLATE"
+                f"&text={quote(task['title'])}"
+                f"&details={quote(task.get('description', ''))}"
+            )
+            links_col1, links_col2 = st.columns(2)
+            with links_col1:
+                st.link_button("Add to Calendar", calendar_url, use_container_width=True)
+            with links_col2:
+                teams_summary = f"New Task: {task['title']} | Priority: {task['priority']}"
+                teams_summary_safe = teams_summary.replace("'", "&#39;")
+                teams_js = f"""
+                <button style='width:100%;padding:0.45rem;border:1px solid #b9c2d8;border-radius:0.5rem;background:#f7f9ff;cursor:pointer;'
+                    onclick="navigator.clipboard.writeText('{teams_summary_safe}');window.open('https://teams.microsoft.com','_blank');">
+                    Share to Teams
+                </button>
+                """
+                st.components.v1.html(teams_js, height=44)
+
+            st.markdown("**Auto-generated checklist**")
+            for idx, item in enumerate(task["checklist"]):
+                check_key = f"check_{task['id']}_{status_id}_{idx}"
+                checked_value = st.checkbox(item, value=task["checklist_state"][idx], key=check_key)
+                if task["checklist_state"][idx] != checked_value:
+                    task["checklist_state"][idx] = checked_value
+                    save_tasks(st.session_state.tasks)
             
             if st.button(btn_text, key=f"btn_{task['id']}"):
                 # STATE FLOW:
@@ -115,24 +219,3 @@ for col_name, status_id, column, btn_text, css_class in workflow:
                 
                 save_tasks(st.session_state.tasks)
                 st.rerun()
-
-# --- 5. NON-INTRUSIVE FRONTEND EXTENSIONS ---
-# Custom enhancements are loaded as isolated JS/CSS and applied via DOM observation.
-def _read_text_file(path):
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return ""
-
-custom_styles = _read_text_file("customStyles.css")
-checklist_skill = _read_text_file("checklistSkill.js")
-custom_features = _read_text_file("customFeatures.js")
-
-components.html(
-    f"""
-    <style>{custom_styles}</style>
-    <script>{checklist_skill}</script>
-    <script>{custom_features}</script>
-    """,
-    height=0,
-)
