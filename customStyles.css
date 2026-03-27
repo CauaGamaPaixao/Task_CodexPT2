@@ -1,0 +1,64 @@
+/* Non-intrusive UI enhancements for TaskMaster custom features */
+.tm-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 8px 0 14px;
+}
+
+.tm-btn {
+  border: 1px solid #b5bfd8;
+  background: #f7f9fc;
+  color: #1f2a44;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.tm-btn:hover {
+  background: #e9eef8;
+}
+
+.tm-actions {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tm-description {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #d7deed;
+  border-radius: 6px;
+  padding: 6px;
+  font-size: 0.78rem;
+  min-height: 54px;
+  resize: vertical;
+}
+
+.tm-checklist {
+  margin-top: 8px;
+  border-top: 1px dashed #d8dfeb;
+  padding-top: 8px;
+}
+
+.tm-checklist-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #415070;
+  margin-bottom: 6px;
+}
+
+.tm-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+  font-size: 0.76rem;
+}
+
+.tm-board-bg {
+  transition: background-image 0.25s ease-in-out;
+}
